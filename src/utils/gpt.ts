@@ -7,23 +7,39 @@ import type {
     ChatCompletionSystemMessageParam,
 } from 'openai/resources';
 import logger from 'src/logger';
-import { GptAdvancedOptions } from 'src/settings';
+import { GptAdvancedOptions, AIProvider } from 'src/settings';
 
 export interface CardInformation {
     q: string;
     a: string;
 }
 
-export function checkGpt(openAiKey: string) {
-    // check gpt api key
-    if (openAiKey === '') {
-        logger.log({
-            level: 'error',
-            message: "OpenAI API key not provided! Please go to your 'Auto Anki' settings to set an API key."
-        });
-        return false;
+export function checkAI(provider: AIProvider, apiKey: string, baseUrl?: string) {
+    if (provider === 'openai') {
+        // check gpt api key
+        if (apiKey === '') {
+            logger.log({
+                level: 'error',
+                message: "OpenAI API key not provided! Please go to your 'Auto Anki' settings to set an API key."
+            });
+            return false;
+        }
+    } else if (provider === 'ollama') {
+        // check ollama base url
+        if (!baseUrl || baseUrl === '') {
+            logger.log({
+                level: 'error',
+                message: "Ollama base URL not provided! Please go to your 'Auto Anki' settings to set the Ollama base URL."
+            });
+            return false;
+        }
     }
     return true;
+}
+
+// Keep the old function for backwards compatibility
+export function checkGpt(openAiKey: string) {
+    return checkAI('openai', openAiKey);
 }
 
 const SAMPLE_NOTE = `A numeral system is a writing system for expressing numbers. It is a mathematical notation for representing numbers of a given set, using digits or other symbols in a consistent manner.
@@ -113,49 +129,78 @@ function createMessages(notes: string, num: number) {
 }
   
 export async function convertNotesToFlashcards(
+    provider: AIProvider,
     apiKey: string,
     notes: string,
     num_q: number,
     num: number,
     options: GptAdvancedOptions,
+    baseUrl?: string,
+    model?: string,
 ) {
     let response: ChatCompletion;
     try {
-        const client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+        let client: OpenAI;
+        let modelToUse: string;
+
+        if (provider === 'openai') {
+            client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+            modelToUse = 'gpt-3.5-turbo-1106';
+        } else if (provider === 'ollama') {
+            client = new OpenAI({ 
+                baseURL: baseUrl + '/v1',
+                apiKey: 'ollama', // Ollama doesn't require an API key, but the client expects one
+                dangerouslyAllowBrowser: true 
+            });
+            modelToUse = model || 'llama3.2';
+        } else {
+            throw new Error(`Unsupported AI provider: ${provider}`);
+        }
 
         const {
             max_tokens_per_question: tokensPerQuestion,
             ...completionOptions
         } = options;
     
-        // for anki connect, the output
-        response = await client.chat.completions.create({
+        // Create completion params, conditionally adding response_format for OpenAI
+        const completionParams: ChatCompletionCreateParams = {
             ...completionOptions,
-            model: 'gpt-3.5-turbo-1106',
+            model: modelToUse,
             messages: createMessages(notes, num_q),
             max_tokens: tokensPerQuestion * num_q,
             n: num,
             stream: false,
-            response_format: { type: "json_object" },
-        } as ChatCompletionCreateParams) as ChatCompletion;
+        };
+
+        // Only add response_format for OpenAI (Ollama may not support it)
+        if (provider === 'openai') {
+            completionParams.response_format = { type: "json_object" };
+        }
+
+        response = await client.chat.completions.create(completionParams) as ChatCompletion;
     }
     catch (err) {
+        const providerName = provider === 'openai' ? 'OpenAI' : 'Ollama';
         if (!err.response) {
             logger.log({
                 level: 'error',
-                message: `Could not connect to OpenAI! ${err.message}`
+                message: `Could not connect to ${providerName}! ${err.message}`
             });
         }
         else {
             const errStatus = err.response.status;
             const errBody = err.response.data;
-            let supportingMessage = `(${errBody.error.code}) ${errBody.error.message}`;
+            let supportingMessage = `(${errBody.error?.code || 'unknown'}) ${errBody.error?.message || 'Unknown error'}`;
             if (errStatus === 401) {
-                supportingMessage = 'Check that your API Key is correct/valid!';
+                if (provider === 'openai') {
+                    supportingMessage = 'Check that your API Key is correct/valid!';
+                } else {
+                    supportingMessage = 'Check that Ollama is running and accessible!';
+                }
             }
             logger.log({
                 level: 'error',
-                message: `ERR ${errStatus}: Could not connect to OpenAI! ${supportingMessage}`
+                message: `ERR ${errStatus}: Could not connect to ${providerName}! ${supportingMessage}`
             });
         }
         return [];
@@ -174,20 +219,39 @@ export async function convertNotesToFlashcards(
                 level: 'info',
                 message: content,
             });
-            const parsedContent = JSON.parse(content);
-            if(parsedContent["questions_answers"] === undefined) throw "";
-            logger.log({
-                level: 'info',
-                message: `Choice ${idx}: generated ${parsedContent["questions_answers"].length} questions and answers`,
-            });
-            card_choices.push(parsedContent['questions_answers'] as CardInformation[])
+            
+            try {
+                const parsedContent = JSON.parse(content);
+                if(parsedContent["questions_answers"] === undefined) {
+                    // Try to extract JSON from markdown code blocks if present
+                    const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+                    if (jsonMatch) {
+                        const jsonContent = JSON.parse(jsonMatch[1]);
+                        if (jsonContent["questions_answers"]) {
+                            card_choices.push(jsonContent['questions_answers'] as CardInformation[]);
+                            return;
+                        }
+                    }
+                    throw new Error("questions_answers not found in response");
+                }
+                logger.log({
+                    level: 'info',
+                    message: `Choice ${idx}: generated ${parsedContent["questions_answers"].length} questions and answers`,
+                });
+                card_choices.push(parsedContent['questions_answers'] as CardInformation[])
+            } catch (parseError) {
+                logger.log({
+                    level: 'warning',
+                    message: `Failed to parse response choice ${idx}: ${parseError.message}. Raw content: ${content}`,
+                });
+            }
         })
         return card_choices;
     }
     catch (err) {
         logger.log({
             level: 'error',
-            message: `Something happened while parsing OpenAI output! Please contact a developer for more support.`,
+            message: `Something happened while parsing AI output! Please contact a developer for more support.`,
         });
         return [];
     }
