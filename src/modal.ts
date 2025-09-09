@@ -1,5 +1,5 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
-import { GptAdvancedOptions } from './settings';
+import { GptAdvancedOptions, AIProvider } from './settings';
 
 import { 
     checkAnkiAvailability,
@@ -7,7 +7,7 @@ import {
     exportToAnki,
     getAnkiDecks,
 } from './utils/anki';
-import { CardInformation, checkGpt, convertNotesToFlashcards } from './utils/gpt';
+import { CardInformation, checkAI, convertNotesToFlashcards } from './utils/gpt';
 import { StatusBarElement } from './utils/cusom-types';
 
 // import { SAMPLE_CARD_INFORMATION } from 'sample/sample_card_information';
@@ -23,32 +23,41 @@ export class ExportModal extends Modal {
     n_alt: number;
     n_alt_valid: boolean;
     data: string;
+    aiProvider: AIProvider;
     apiKey: string;
     port: number;
     deck: string;
     gptAdvancedOptions: GptAdvancedOptions;
     statusBar: StatusBarElement;
+    ollamaBaseUrl?: string;
+    ollamaModel?: string;
     
     constructor(
         app: App,
         statusBar: StatusBarElement,
         data: string,
-        openAiApiKey: string,
+        aiProvider: AIProvider,
+        apiKey: string,
         ankiConnectPort: number,
         ankiDestinationDeck: string,
         gptAdvancedOptions: GptAdvancedOptions,
-        dafaultNumQuestions?: number,
+        defaultNumQuestions?: number,
         defaultNumAlternatives?: number,
+        ollamaBaseUrl?: string,
+        ollamaModel?: string,
     ) {
         super(app);
         this.statusBar = statusBar;
         this.data = data;
-        this.apiKey = openAiApiKey;
+        this.aiProvider = aiProvider;
+        this.apiKey = apiKey;
         this.port = ankiConnectPort;
         this.deck = ankiDestinationDeck;
         this.gptAdvancedOptions = gptAdvancedOptions;
+        this.ollamaBaseUrl = ollamaBaseUrl;
+        this.ollamaModel = ollamaModel;
 
-        this.n_q = dafaultNumQuestions ?? 5;
+        this.n_q = defaultNumQuestions ?? 5;
         this.n_q_valid = checkValidNumGreaterThanZero(this.n_q);
         this.n_alt = defaultNumAlternatives ?? 3;
         this.n_alt_valid = checkValidNumGreaterThanZero(this.n_alt, true);
@@ -104,16 +113,19 @@ export class ExportModal extends Modal {
                     this.close();
 
                     let isRequestValid = false;
-                    isRequestValid = checkGpt(this.apiKey);
+                    isRequestValid = checkAI(this.aiProvider, this.apiKey, this.ollamaBaseUrl);
 
                     if (!isRequestValid) return;
                     if (this.statusBar.doDisplayRunning) this.statusBar.doDisplayRunning();
                     const card_sets: Array<CardInformation[]> = await convertNotesToFlashcards(
+                        this.aiProvider,
                         this.apiKey,
                         this.data,
                         this.n_q,
                         this.n_alt+1,
                         this.gptAdvancedOptions,
+                        this.ollamaBaseUrl,
+                        this.ollamaModel,
                     );
                     if (this.statusBar.doReset) this.statusBar.doReset();
 

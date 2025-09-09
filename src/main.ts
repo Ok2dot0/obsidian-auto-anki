@@ -12,6 +12,7 @@ import {
 import {
 	PluginSettings,
 	DEFAULT_SETTINGS,
+	AIProvider,
 } from './settings';
 
 import { ExportModal } from './modal';
@@ -61,7 +62,11 @@ export default class AutoAnkiPlugin extends Plugin {
 			id: 'export-current-file-to-anki',
 			name: 'Export Current File to Anki',
 			checkCallback: (checking: boolean) => {
-				if (this.settings.openAiApiKey == null) {
+				// Check if AI provider is configured
+				if (this.settings.aiProvider === 'openai' && this.settings.openAiApiKey == null) {
+					return false;
+				}
+				if (this.settings.aiProvider === 'ollama' && !this.settings.ollamaBaseUrl) {
 					return false;
 				}
 
@@ -77,18 +82,21 @@ export default class AutoAnkiPlugin extends Plugin {
 					}
 
 					// const apiKey = electronDecrypt(this.settings.openAiApiKey);
-					const apiKey = this.settings.openAiApiKey;
+					const apiKey = this.settings.openAiApiKey || '';
 					const port = this.settings.ankiConnectPort || ANKI_CONNECT_DEFAULT_PORT;
 					new ExportModal(
 						this.app,
 						this.statusBar,
 						view.data,
+						this.settings.aiProvider,
 						apiKey,
 						port,
 						this.settings.ankiDestinationDeck,
 						this.settings.gptAdvancedOptions,
 						defaultsFile.numQuestions,
 						defaultsFile.numAlternatives,
+						this.settings.ollamaBaseUrl,
+						this.settings.ollamaModel,
 					).open();
 				}
 
@@ -102,7 +110,11 @@ export default class AutoAnkiPlugin extends Plugin {
 			editorCheckCallback: (checking: boolean, editor: Editor, view: MarkdownView) => {
 				const currTextSelection = editor.getSelection();
 
-				if (this.settings.openAiApiKey == null) {
+				// Check if AI provider is configured
+				if (this.settings.aiProvider === 'openai' && this.settings.openAiApiKey == null) {
+					return false;
+				}
+				if (this.settings.aiProvider === 'ollama' && !this.settings.ollamaBaseUrl) {
 					return false;
 				}
 
@@ -113,18 +125,21 @@ export default class AutoAnkiPlugin extends Plugin {
 					}
 
 					// const apiKey = electronDecrypt(this.settings.openAiApiKey);
-					const apiKey = this.settings.openAiApiKey;
+					const apiKey = this.settings.openAiApiKey || '';
 					const port = this.settings.ankiConnectPort || ANKI_CONNECT_DEFAULT_PORT;
 					new ExportModal(
 						this.app,
 						this.statusBar,
 						currTextSelection,
+						this.settings.aiProvider,
 						apiKey,
 						port,
 						this.settings.ankiDestinationDeck,
 						this.settings.gptAdvancedOptions,
 						defaultsTextSelection.numQuestions,
 						defaultsTextSelection.numAlternatives,
+						this.settings.ollamaBaseUrl,
+						this.settings.ollamaModel,
 					).open();
 				}
 
@@ -161,7 +176,7 @@ class AutoAnkiSettingTab extends PluginSettingTab {
 
 		const ankiDescription = document.createElement('div');
         // use innerHTML for harcoded description
-		ankiDescription.innerHTML = '<p><a href="https://apps.ankiweb.net/">Anki</a> is an open-source flashcard program that is popular for spaced repetition. This plugin has only been tested on desktop, and requires <a href="https://foosoft.net/projects/anki-connect/">Anki Connect</a> to be installed alongside the main Anki program.</p><p>Enabling this plugin will add commands to automatically generate Question-Answer-style flashcards into the Anki system using OpenAI\'s AI models.</p><p>For information on usage, see <a href="https://github.com/ad2969/obsidian-auto-anki#readme">the instructions</a> online.</p>';
+		ankiDescription.innerHTML = '<p><a href="https://apps.ankiweb.net/">Anki</a> is an open-source flashcard program that is popular for spaced repetition. This plugin has only been tested on desktop, and requires <a href="https://foosoft.net/projects/anki-connect/">Anki Connect</a> to be installed alongside the main Anki program.</p><p>Enabling this plugin will add commands to automatically generate Question-Answer-style flashcards into the Anki system using AI models (OpenAI GPT or Ollama).</p><p>For information on usage, see <a href="https://github.com/ad2969/obsidian-auto-anki#readme">the instructions</a> online.</p>';
         containerEl.appendChild(ankiDescription)
 		
 		new Setting(containerEl)
@@ -175,29 +190,76 @@ class AutoAnkiSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				})
 			);
-		
-		const openAiDescription = new DocumentFragment();
-		const openAiDescHtml = document.createElement('p');
-        // use innerHTML for harcoded description
-		openAiDescHtml.innerHTML = 'The API Key associated with your OpenAI account, used for querying GPT. Go <a href="https://platform.openai.com/account/api-keys">here</a> to obtain one.';
-		openAiDescription.appendChild(openAiDescHtml);
 
-		new Setting(containerEl)
-			.setName('OpenAI API Key')
-			.setDesc(openAiDescription)
-			.addText(textComponent => textComponent
-				.setPlaceholder(`key entered: ${this.plugin.settings.openAiApiKeyIdentifier}` ?? 'NO_KEY_ENTERED')
-				.onChange(async (value) => {
-					// this.plugin.settings.openAiApiKey = electronEncrypt(value);
-					this.plugin.settings.openAiApiKey = value;
-                    let identifier = 'xxxx';
-                    if (value.length >= 7) {
-                        identifier = `${value.slice(0,3)}...${value.slice(-4)}`
-                    }
-                    this.plugin.settings.openAiApiKeyIdentifier = identifier;
-					await this.plugin.saveSettings();
-				})
-			);
+        containerEl.createEl('h2', { text: 'AI Provider Configuration' });
+
+        new Setting(containerEl)
+            .setName('AI Provider')
+            .setDesc('Choose the AI provider for generating flashcards')
+            .addDropdown(dropdown => dropdown
+                .addOption('openai', 'OpenAI')
+                .addOption('ollama', 'Ollama')
+                .setValue(this.plugin.settings.aiProvider)
+                .onChange(async (value: AIProvider) => {
+                    this.plugin.settings.aiProvider = value;
+                    await this.plugin.saveSettings();
+                    // Refresh the display to show/hide relevant settings
+                    this.display();
+                })
+            );
+		
+		// OpenAI Settings (only show if OpenAI is selected)
+        if (this.plugin.settings.aiProvider === 'openai') {
+            const openAiDescription = new DocumentFragment();
+            const openAiDescHtml = document.createElement('p');
+            // use innerHTML for harcoded description
+            openAiDescHtml.innerHTML = 'The API Key associated with your OpenAI account, used for querying GPT. Go <a href="https://platform.openai.com/account/api-keys">here</a> to obtain one.';
+            openAiDescription.appendChild(openAiDescHtml);
+
+            new Setting(containerEl)
+                .setName('OpenAI API Key')
+                .setDesc(openAiDescription)
+                .addText(textComponent => textComponent
+                    .setPlaceholder(`key entered: ${this.plugin.settings.openAiApiKeyIdentifier}` ?? 'NO_KEY_ENTERED')
+                    .onChange(async (value) => {
+                        // this.plugin.settings.openAiApiKey = electronEncrypt(value);
+                        this.plugin.settings.openAiApiKey = value;
+                        let identifier = 'xxxx';
+                        if (value.length >= 7) {
+                            identifier = `${value.slice(0,3)}...${value.slice(-4)}`
+                        }
+                        this.plugin.settings.openAiApiKeyIdentifier = identifier;
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
+
+        // Ollama Settings (only show if Ollama is selected)
+        if (this.plugin.settings.aiProvider === 'ollama') {
+            new Setting(containerEl)
+                .setName('Ollama Base URL')
+                .setDesc('The base URL for your Ollama server (e.g., http://localhost:11434)')
+                .addText(textComponent => textComponent
+                    .setPlaceholder('http://localhost:11434')
+                    .setValue(this.plugin.settings.ollamaBaseUrl)
+                    .onChange(async (value) => {
+                        this.plugin.settings.ollamaBaseUrl = value;
+                        await this.plugin.saveSettings();
+                    })
+                );
+
+            new Setting(containerEl)
+                .setName('Ollama Model')
+                .setDesc('The name of the Ollama model to use (e.g., llama3.2, mistral)')
+                .addText(textComponent => textComponent
+                    .setPlaceholder('llama3.2')
+                    .setValue(this.plugin.settings.ollamaModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.ollamaModel = value;
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
 
         containerEl.createEl('h2', { text: 'Default Options for Exporting' });
 		
@@ -297,7 +359,7 @@ class AutoAnkiSettingTab extends PluginSettingTab {
 				})
 			);
 
-        containerEl.createEl('h2', { text: 'Advanced Options for OpenAI\'s GPT Models' });
+        containerEl.createEl('h2', { text: 'Advanced Options for AI Models' });
 
         // See OpenAI docs for more info:
         // https://platform.openai.com/docs/api-reference/completions

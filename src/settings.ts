@@ -20,11 +20,16 @@ export interface QuestionGenerationDefaults {
 	},
 }
 
+export type AIProvider = 'openai' | 'ollama';
+
 export interface PluginSettings {
 	ankiConnectPort: number;
 	ankiDestinationDeck: string;
+	aiProvider: AIProvider;
 	openAiApiKey: string | null;
 	openAiApiKeyIdentifier: string;
+	ollamaBaseUrl: string;
+	ollamaModel: string;
 	gptAdvancedOptions: GptAdvancedOptions;
 	questionGenerationDefaults: QuestionGenerationDefaults;
 }
@@ -32,8 +37,11 @@ export interface PluginSettings {
 export const DEFAULT_SETTINGS: PluginSettings = {
 	ankiConnectPort: ANKI_CONNECT_DEFAULT_PORT,
 	ankiDestinationDeck: '',
+	aiProvider: 'openai',
 	openAiApiKey: null,
 	openAiApiKeyIdentifier: '',
+	ollamaBaseUrl: 'http://localhost:11434',
+	ollamaModel: 'llama3.2',
 	gptAdvancedOptions: {
 		temperature: 1,
 		top_p: 1.0,
