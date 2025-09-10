@@ -16,6 +16,7 @@ import {
 } from './settings';
 
 import { ExportModal } from './modal';
+import { isActiveFileSupportedMedia } from './utils/image-utils';
 // import {
 //     electronEncrypt,
 //     electronDecrypt,
@@ -142,6 +143,54 @@ export default class AutoAnkiPlugin extends Plugin {
 						this.settings.ollamaBaseUrl,
 						this.settings.ollamaModel,
 						this.settings.multimodal,
+					).open();
+				}
+
+				return true;
+			},
+		});
+
+		this.addCommand({
+			id: 'export-current-media-file-to-anki',
+			name: 'Export Current Media File to Anki',
+			checkCallback: (checking: boolean) => {
+				// Check if AI provider is configured
+				if (this.settings.aiProvider === 'openai' && this.settings.openAiApiKey == null) {
+					return false;
+				}
+				if (this.settings.aiProvider === 'ollama' && !this.settings.ollamaBaseUrl) {
+					return false;
+				}
+
+				// Check if multimodal is enabled
+				if (!this.settings.multimodal.enabled) {
+					return false;
+				}
+
+				// Check if current file is a supported media file
+				const activeFile = isActiveFileSupportedMedia(this.app, this.settings.multimodal.supportedFormats);
+				if (!activeFile) {
+					return false;
+				}
+
+				if (!checking) {
+					const apiKey = this.settings.openAiApiKey || '';
+					const port = this.settings.ankiConnectPort || ANKI_CONNECT_DEFAULT_PORT;
+					new ExportModal(
+						this.app,
+						this.statusBar,
+						`Processing media file: ${activeFile.name}`, // Use filename as placeholder text
+						this.settings.aiProvider,
+						apiKey,
+						port,
+						this.settings.ankiDestinationDeck,
+						this.settings.gptAdvancedOptions,
+						defaultsFile.numQuestions,
+						defaultsFile.numAlternatives,
+						this.settings.ollamaBaseUrl,
+						this.settings.ollamaModel,
+						this.settings.multimodal,
+						activeFile, // Pass the file as additional parameter
 					).open();
 				}
 
@@ -305,6 +354,19 @@ class AutoAnkiSettingTab extends PluginSettingTab {
                         } else {
                             new Notice('Please enter a valid number');
                         }
+                    })
+                );
+
+            new Setting(containerEl)
+                .setName('Supported File Formats')
+                .setDesc('Comma-separated list of supported file extensions (e.g., jpg,png,pdf)')
+                .addText(textComponent => textComponent
+                    .setPlaceholder('jpg,jpeg,png,gif,bmp,webp,pdf')
+                    .setValue(this.plugin.settings.multimodal.supportedFormats.join(','))
+                    .onChange(async (value) => {
+                        const formats = value.split(',').map(f => f.trim().toLowerCase()).filter(f => f.length > 0);
+                        this.plugin.settings.multimodal.supportedFormats = formats;
+                        await this.plugin.saveSettings();
                     })
                 );
         }

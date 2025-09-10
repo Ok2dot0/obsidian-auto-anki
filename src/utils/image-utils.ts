@@ -37,7 +37,8 @@ function getMimeType(extension: string): string {
         'png': 'image/png',
         'gif': 'image/gif',
         'bmp': 'image/bmp',
-        'webp': 'image/webp'
+        'webp': 'image/webp',
+        'pdf': 'application/pdf'
     };
     
     return mimeTypes[extension.toLowerCase()] || 'image/jpeg';
@@ -49,6 +50,20 @@ function getMimeType(extension: string): string {
 function isSupportedImageFormat(path: string, supportedFormats: string[]): boolean {
     const extension = path.split('.').pop()?.toLowerCase();
     return extension ? supportedFormats.includes(extension) : false;
+}
+
+/**
+ * Check if a file is a supported media format (images, PDFs, etc.)
+ */
+export function isSupportedMediaFormat(path: string, supportedFormats: string[]): boolean {
+    return isSupportedImageFormat(path, supportedFormats);
+}
+
+/**
+ * Get all supported media file extensions
+ */
+export function getAllSupportedExtensions(): string[] {
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf'];
 }
 
 /**
@@ -96,25 +111,44 @@ export async function processImages(
                 continue;
             }
 
-            // Find the file in the vault
-            const file = app.vault.getAbstractFileByPath(imagePath) as TFile;
-            if (!file || !(file instanceof TFile)) {
-                // Try to find the file by name if direct path doesn't work
+            // Find the file in the vault - improved path resolution
+            let imageFile: TFile | null = null;
+            
+            // Try direct path first
+            const directFile = app.vault.getAbstractFileByPath(imagePath) as TFile;
+            if (directFile && directFile instanceof TFile) {
+                imageFile = directFile;
+            } else {
+                // Try to find the file by name or partial path
                 const allFiles = app.vault.getFiles();
-                const foundFile = allFiles.find(f => f.name === imagePath || f.path.endsWith(imagePath));
                 
+                // First, try exact name match
+                let foundFile = allFiles.find(f => f.name === imagePath);
+                
+                // If not found, try files that end with the path
                 if (!foundFile) {
-                    logger.log({
-                        level: 'warning',
-                        message: `Image file not found: ${imagePath}`
-                    });
-                    continue;
+                    foundFile = allFiles.find(f => f.path.endsWith(imagePath));
                 }
                 
-                imagePath = foundFile.path;
+                // If still not found, try basename match
+                if (!foundFile) {
+                    const imageName = imagePath.split('/').pop() || imagePath;
+                    foundFile = allFiles.find(f => f.name === imageName);
+                }
+                
+                if (foundFile) {
+                    imageFile = foundFile;
+                    imagePath = foundFile.path; // Update path to the correct one
+                }
             }
 
-            const imageFile = app.vault.getAbstractFileByPath(imagePath) as TFile;
+            if (!imageFile) {
+                logger.log({
+                    level: 'warning',
+                    message: `Image file not found: ${imageRef.path}. Tried: direct path, name match, path ending, basename match.`
+                });
+                continue;
+            }
             
             // Check file size
             if (bytesToKB(imageFile.stat.size) > multimodalSettings.maxImageSize) {
@@ -156,6 +190,83 @@ export async function processImages(
     return processedImages;
 }
 
+/**
+ * Process a standalone file (image, PDF, etc.) for multimodal processing
+ */
+export async function processStandaloneFile(
+    app: App,
+    file: TFile,
+    multimodalSettings: MultimodalSettings
+): Promise<ImageInfo | null> {
+    if (!multimodalSettings.enabled) {
+        return null;
+    }
+
+    try {
+        const filePath = file.path;
+        
+        // Check if format is supported
+        if (!isSupportedMediaFormat(filePath, multimodalSettings.supportedFormats)) {
+            logger.log({
+                level: 'warning',
+                message: `Unsupported file format: ${filePath}`
+            });
+            return null;
+        }
+
+        // Check file size
+        if (bytesToKB(file.stat.size) > multimodalSettings.maxImageSize) {
+            logger.log({
+                level: 'warning',
+                message: `File too large (${Math.round(bytesToKB(file.stat.size))}KB): ${filePath}`
+            });
+            return null;
+        }
+
+        // Read and convert to base64
+        const arrayBuffer = await app.vault.readBinary(file);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        const base64 = btoa(String.fromCharCode(...uint8Array));
+        
+        const extension = filePath.split('.').pop()?.toLowerCase() || 'jpeg';
+        const mimeType = getMimeType(extension);
+
+        logger.log({
+            level: 'info',
+            message: `Successfully processed standalone file: ${filePath} (${Math.round(bytesToKB(file.stat.size))}KB)`
+        });
+
+        return {
+            path: filePath,
+            base64,
+            mimeType,
+            alt: file.name
+        };
+
+    } catch (error) {
+        logger.log({
+            level: 'error',
+            message: `Error processing standalone file ${file.path}: ${error.message}`
+        });
+        return null;
+    }
+}
+
+/**
+ * Check if the currently active file is a supported media file
+ */
+export function isActiveFileSupportedMedia(app: App, supportedFormats: string[]): TFile | null {
+    const activeFile = app.workspace.getActiveFile();
+    if (!activeFile || !(activeFile instanceof TFile)) {
+        return null;
+    }
+    
+    if (isSupportedMediaFormat(activeFile.path, supportedFormats)) {
+        return activeFile;
+    }
+    
+    return null;
+}
 /**
  * Remove image markdown syntax from text to avoid duplicate processing
  */

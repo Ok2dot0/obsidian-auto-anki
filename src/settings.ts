@@ -54,7 +54,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 		enabled: false,
 		visionModel: 'llama3.2-vision:11b',
 		maxImageSize: 5000, // 5MB in KB
-		supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
+		supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf'],
 	},
 	gptAdvancedOptions: {
 		temperature: 1,
