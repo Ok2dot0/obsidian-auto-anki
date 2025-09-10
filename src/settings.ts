@@ -22,6 +22,13 @@ export interface QuestionGenerationDefaults {
 
 export type AIProvider = 'openai' | 'ollama';
 
+export interface MultimodalSettings {
+	enabled: boolean;
+	visionModel: string;
+	maxImageSize: number; // in KB
+	supportedFormats: string[];
+}
+
 export interface PluginSettings {
 	ankiConnectPort: number;
 	ankiDestinationDeck: string;
@@ -30,6 +37,7 @@ export interface PluginSettings {
 	openAiApiKeyIdentifier: string;
 	ollamaBaseUrl: string;
 	ollamaModel: string;
+	multimodal: MultimodalSettings;
 	gptAdvancedOptions: GptAdvancedOptions;
 	questionGenerationDefaults: QuestionGenerationDefaults;
 }
@@ -42,6 +50,12 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	openAiApiKeyIdentifier: '',
 	ollamaBaseUrl: 'http://localhost:11434',
 	ollamaModel: 'llama3.2',
+	multimodal: {
+		enabled: false,
+		visionModel: 'llama3.2-vision:11b',
+		maxImageSize: 5000, // 5MB in KB
+		supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
+	},
 	gptAdvancedOptions: {
 		temperature: 1,
 		top_p: 1.0,

@@ -1,5 +1,5 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
-import { GptAdvancedOptions, AIProvider } from './settings';
+import { GptAdvancedOptions, AIProvider, MultimodalSettings } from './settings';
 
 import { 
     checkAnkiAvailability,
@@ -31,6 +31,7 @@ export class ExportModal extends Modal {
     statusBar: StatusBarElement;
     ollamaBaseUrl?: string;
     ollamaModel?: string;
+    multimodalSettings?: MultimodalSettings;
     
     constructor(
         app: App,
@@ -45,6 +46,7 @@ export class ExportModal extends Modal {
         defaultNumAlternatives?: number,
         ollamaBaseUrl?: string,
         ollamaModel?: string,
+        multimodalSettings?: MultimodalSettings,
     ) {
         super(app);
         this.statusBar = statusBar;
@@ -56,6 +58,7 @@ export class ExportModal extends Modal {
         this.gptAdvancedOptions = gptAdvancedOptions;
         this.ollamaBaseUrl = ollamaBaseUrl;
         this.ollamaModel = ollamaModel;
+        this.multimodalSettings = multimodalSettings;
 
         this.n_q = defaultNumQuestions ?? 5;
         this.n_q_valid = checkValidNumGreaterThanZero(this.n_q);
@@ -118,6 +121,7 @@ export class ExportModal extends Modal {
                     if (!isRequestValid) return;
                     if (this.statusBar.doDisplayRunning) this.statusBar.doDisplayRunning();
                     const card_sets: Array<CardInformation[]> = await convertNotesToFlashcards(
+                        this.app,
                         this.aiProvider,
                         this.apiKey,
                         this.data,
@@ -126,6 +130,7 @@ export class ExportModal extends Modal {
                         this.gptAdvancedOptions,
                         this.ollamaBaseUrl,
                         this.ollamaModel,
+                        this.multimodalSettings,
                     );
                     if (this.statusBar.doReset) this.statusBar.doReset();
 

@@ -31,6 +31,7 @@ Choose one of the following AI providers:
 **Option 2: Ollama (Local/Self-hosted)**
 - [Ollama](https://ollama.ai/) installed and running on your local machine or server
 - A compatible model installed (e.g., `ollama pull llama3.2` or `ollama pull mistral`)
+- For multimodal support: Vision models like `ollama pull llama3.2-vision:11b`
 
 ### Anki Setup (Required for both options)
 - The [Anki](https://apps.ankiweb.net/) program, installed locally
@@ -45,6 +46,7 @@ Choose one of the following AI providers:
    - AI Provider: Choose between "OpenAI" or "Ollama"
    - **For OpenAI**: Enter your OpenAI API Key
    - **For Ollama**: Set the Ollama Base URL (default: `http://localhost:11434`) and Model name (e.g., `llama3.2`)
+   - **Multimodal Support** (optional): Enable to process images alongside text using vision models
 4. Enjoy!
 
 ### Ollama Setup Guide
@@ -64,6 +66,27 @@ If you choose to use Ollama (local AI), follow these steps:
 - ✅ No API costs
 - ✅ Privacy-focused (your notes never leave your device)
 - ✅ Supports many open-source models
+- ✅ Vision models available (llama3.2-vision) for multimodal support
+
+## New: Multimodal Support
+
+The plugin now supports **multimodal capabilities** with vision models like Llama 3.2 Vision! This allows you to generate flashcards from content that includes both text and images.
+
+### Key Features:
+- 📸 **Image Processing**: Automatically detects and processes images in your markdown notes
+- 🧠 **Vision Models**: Supports Llama 3.2 Vision (11B/90B) and GPT-4 Vision
+- 🎯 **Smart Questions**: Generates questions about both textual and visual content
+- ⚙️ **Configurable**: Enable/disable, adjust image size limits, specify vision models
+- 🔄 **Backward Compatible**: Text-only processing works exactly as before
+
+### Quick Start with Multimodal:
+1. Install a vision model: `ollama pull llama3.2-vision:11b`
+2. Enable "Multimodal Support" in plugin settings
+3. Set "Vision Model" to `llama3.2-vision:11b`
+4. Add images to your notes using `![alt text](image.png)` syntax
+5. Generate flashcards as usual!
+
+For detailed setup and usage instructions, see [MULTIMODAL_GUIDE.md](MULTIMODAL_GUIDE.md).
 
 ## Feature Details
 

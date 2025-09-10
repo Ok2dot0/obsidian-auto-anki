@@ -6,8 +6,10 @@ import type {
     ChatCompletionAssistantMessageParam,
     ChatCompletionSystemMessageParam,
 } from 'openai/resources';
+import { App } from 'obsidian';
 import logger from 'src/logger';
-import { GptAdvancedOptions, AIProvider } from 'src/settings';
+import { GptAdvancedOptions, AIProvider, MultimodalSettings } from 'src/settings';
+import { processImages, stripImageMarkdown, ImageInfo } from './image-utils';
 
 export interface CardInformation {
     q: string;
@@ -91,22 +93,31 @@ function generateRepeatedSampleOutput(num: number) {
     return output.slice(0, num);
 }
 
-function createMessages(notes: string, num: number) {
+function createMessages(notes: string, num: number, images?: ImageInfo[]) {
     const messages = [];
+    
+    // Create system message with multimodal instructions if images are present
+    const systemContent = images && images.length > 0 
+        ? `You will be provided notes on a specific topic along with images. The notes are formatted in markdown. Based on the given notes and images, make a list of ${num} questions and short answers that can be used for reviewing said notes by spaced repetition. Use the following guidelines:
+        - output the questions and answers in the following JSON format { "questions_answers": [{ "q": "<generated question>", "a": "<generated answer>" }] }
+        - ensure that the questions cover the entire portion of the given notes and images, do not come up with similar questions or repeat the same questions
+        - when referencing images in questions or answers, describe the relevant visual content clearly
+        - create questions that test understanding of both textual and visual information where applicable`
+        : `You will be provided notes on a specific topic. The notes are formatted in markdown. Based on the given notes, make a list of ${num} questions and short answers that can be used for reviewing said notes by spaced repetition. Use the following guidelines:
+        - output the questions and answers in the following JSON format { "questions_answers": [{ "q": "<generated question>", "a": "<generated answer>" }] }
+        - ensure that the questions cover the entire portion of the given notes, do not come up with similar questions or repeat the same questions`;
+
     messages.push({
         role: 'system',
-        content: `You will be provided notes on a specific topic. The notes are formatted in markdown. Based on the given notes, make a list of ${num} questions and short answers that can be used for reviewing said notes by spaced repetition. Use the following guidelines:
-        - output the questions and answers in the following JSON format { "questions_answers": [{ "q": "<generated question>", "a": "<generated answer>" }] }
-        - ensure that the questions cover the entire portion of the given notes, do not come up with similar questions or repeat the same questions
-    `} as ChatCompletionSystemMessageParam)
+        content: systemContent
+    } as ChatCompletionSystemMessageParam)
 
-    // Insert sample user prompt
+    // Insert sample user prompt (keeping it text-only for consistency)
     messages.push({
         role: 'user',
         content: SAMPLE_NOTE,
     } as ChatCompletionUserMessageParam);
     
-
     // Insert sample assistant output (JSON format)
     messages.push({
         role: 'assistant',
@@ -119,16 +130,42 @@ function createMessages(notes: string, num: number) {
         "questions_answers": generateRepeatedSampleOutput(num)
     })
 
-    // Insert notes
-    messages.push({
-        role: 'user',
-        content: `\n${notes.trim()}\n`,
-    } as ChatCompletionUserMessageParam);
+    // Create user message with notes and optional images
+    if (images && images.length > 0) {
+        const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
+            {
+                type: 'text',
+                text: `\n${notes.trim()}\n`
+            }
+        ];
+
+        // Add images to the content array
+        images.forEach(image => {
+            content.push({
+                type: 'image_url',
+                image_url: {
+                    url: `data:${image.mimeType};base64,${image.base64}`
+                }
+            });
+        });
+
+        messages.push({
+            role: 'user',
+            content: content
+        } as any); // Using any to work around OpenAI SDK type constraints
+    } else {
+        // Text-only message
+        messages.push({
+            role: 'user',
+            content: `\n${notes.trim()}\n`,
+        } as ChatCompletionUserMessageParam);
+    }
 
     return messages;
 }
   
 export async function convertNotesToFlashcards(
+    app: App,
     provider: AIProvider,
     apiKey: string,
     notes: string,
@@ -137,22 +174,45 @@ export async function convertNotesToFlashcards(
     options: GptAdvancedOptions,
     baseUrl?: string,
     model?: string,
+    multimodalSettings?: MultimodalSettings,
 ) {
     let response: ChatCompletion;
+    let processedImages: ImageInfo[] = [];
+    let processedNotes = notes;
+
     try {
+        // Process images if multimodal is enabled
+        if (multimodalSettings && multimodalSettings.enabled) {
+            processedImages = await processImages(app, notes, multimodalSettings);
+            if (processedImages.length > 0) {
+                // Strip image markdown from notes to avoid duplication
+                processedNotes = stripImageMarkdown(notes);
+                logger.log({
+                    level: 'info',
+                    message: `Processing ${processedImages.length} images with notes`
+                });
+            }
+        }
+
         let client: OpenAI;
         let modelToUse: string;
 
         if (provider === 'openai') {
             client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-            modelToUse = 'gpt-3.5-turbo-1106';
+            // Use vision model if images are present, otherwise use regular model
+            modelToUse = processedImages.length > 0 ? 'gpt-4-vision-preview' : 'gpt-3.5-turbo-1106';
         } else if (provider === 'ollama') {
             client = new OpenAI({ 
                 baseURL: baseUrl + '/v1',
                 apiKey: 'ollama', // Ollama doesn't require an API key, but the client expects one
                 dangerouslyAllowBrowser: true 
             });
-            modelToUse = model || 'llama3.2';
+            // Use vision model if images are present and multimodal is enabled
+            if (processedImages.length > 0 && multimodalSettings?.enabled) {
+                modelToUse = multimodalSettings.visionModel;
+            } else {
+                modelToUse = model || 'llama3.2';
+            }
         } else {
             throw new Error(`Unsupported AI provider: ${provider}`);
         }
@@ -162,18 +222,18 @@ export async function convertNotesToFlashcards(
             ...completionOptions
         } = options;
     
-        // Create completion params, conditionally adding response_format for OpenAI
+        // Create completion params
         const completionParams: ChatCompletionCreateParams = {
             ...completionOptions,
             model: modelToUse,
-            messages: createMessages(notes, num_q),
+            messages: createMessages(processedNotes, num_q, processedImages.length > 0 ? processedImages : undefined),
             max_tokens: tokensPerQuestion * num_q,
             n: num,
             stream: false,
         };
 
-        // Only add response_format for OpenAI (Ollama may not support it)
-        if (provider === 'openai') {
+        // Only add response_format for OpenAI with text models (vision models may not support it)
+        if (provider === 'openai' && processedImages.length === 0) {
             completionParams.response_format = { type: "json_object" };
         }
 

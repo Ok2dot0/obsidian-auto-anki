@@ -97,6 +97,7 @@ export default class AutoAnkiPlugin extends Plugin {
 						defaultsFile.numAlternatives,
 						this.settings.ollamaBaseUrl,
 						this.settings.ollamaModel,
+						this.settings.multimodal,
 					).open();
 				}
 
@@ -140,6 +141,7 @@ export default class AutoAnkiPlugin extends Plugin {
 						defaultsTextSelection.numAlternatives,
 						this.settings.ollamaBaseUrl,
 						this.settings.ollamaModel,
+						this.settings.multimodal,
 					).open();
 				}
 
@@ -257,6 +259,52 @@ class AutoAnkiSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.ollamaModel = value;
                         await this.plugin.saveSettings();
+                    })
+                );
+        }
+
+        // Multimodal Settings
+        containerEl.createEl('h2', { text: 'Multimodal (Vision) Settings' });
+        
+        new Setting(containerEl)
+            .setName('Enable Multimodal Support')
+            .setDesc('Enable processing of images alongside text using vision models')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.multimodal.enabled)
+                .onChange(async (value) => {
+                    this.plugin.settings.multimodal.enabled = value;
+                    await this.plugin.saveSettings();
+                    // Refresh display to show/hide multimodal settings
+                    this.display();
+                })
+            );
+
+        if (this.plugin.settings.multimodal.enabled) {
+            new Setting(containerEl)
+                .setName('Vision Model')
+                .setDesc('The vision-capable model to use (for Ollama: llama3.2-vision:11b or llama3.2-vision:90b)')
+                .addText(textComponent => textComponent
+                    .setPlaceholder('llama3.2-vision:11b')
+                    .setValue(this.plugin.settings.multimodal.visionModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.multimodal.visionModel = value;
+                        await this.plugin.saveSettings();
+                    })
+                );
+
+            new Setting(containerEl)
+                .setName('Max Image Size (KB)')
+                .setDesc('Maximum size for images to be processed (in kilobytes)')
+                .addText(textComponent => textComponent
+                    .setPlaceholder('5000')
+                    .setValue(String(this.plugin.settings.multimodal.maxImageSize))
+                    .onChange(async (value) => {
+                        if (isNumeric(value)) {
+                            this.plugin.settings.multimodal.maxImageSize = Number(value);
+                            await this.plugin.saveSettings();
+                        } else {
+                            new Notice('Please enter a valid number');
+                        }
                     })
                 );
         }
