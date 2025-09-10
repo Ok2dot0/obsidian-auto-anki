@@ -111,6 +111,27 @@ An indicator will show whether `auto-anki` is currently generating your flash ca
 #### Exporting Highlighted Text to Anki (Command: _Export Highlighted Text to Anki_)
 This command is similar to "Exporting an Entire File to Anki", but this allows you to use the currently-highlighted text (instead of the whole file) to send to GPT and generate a list of questions and questions. (Important Note: file needs to be in `edit` mode for the command to be available).
 
+#### Exporting Media Files to Anki (Command: _Export Current Media File to Anki_)
+**NEW!** This command allows you to generate flashcards directly from standalone media files (images, PDFs, etc.) when viewing them in Obsidian. This feature requires multimodal support to be enabled.
+
+**Supported File Types:**
+- Images: JPG, JPEG, PNG, GIF, BMP, WebP
+- Documents: PDF
+- Configurable through plugin settings
+
+**How to Use:**
+1. Enable "Multimodal Support" in plugin settings
+2. Configure your vision model (e.g., `llama3.2-vision:11b` for Ollama)
+3. Open any supported media file in Obsidian
+4. Use the command "Export Current Media File to Anki"
+5. The AI will analyze the file content and generate relevant questions
+
+This is perfect for:
+- 📊 Analyzing charts, graphs, and diagrams
+- 📄 Processing PDF documents and slides  
+- 🖼️ Learning from visual content and infographics
+- 🔬 Studying scientific figures and illustrations
+
 ## Motivation
 
 With the kajillion things I read and watch on a daily basis, I've recently found myself struggling to retain knowledge of the things I've consumed. Hence, I've found myself trying to find new ways to enhance my self-education. I came upon [Spaced Repetition](https://en.wikipedia.org/wiki/Spaced_repetition), and wanted to try to use [Anki](https://apps.ankiweb.net/) to supplement my daily learnings. Being a long-time user and lover of [Obsidian.md](https://obsidian.md/) as my PKM (Personal Knowledge Management), I wanted to see if there was a way to automate my learning using spaced repetition with my current Obsidian vaults.

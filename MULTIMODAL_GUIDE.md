@@ -27,7 +27,7 @@ This guide explains how to use the multimodal (vision) capabilities in Auto Anki
    - For OpenAI: The plugin automatically uses `gpt-4-vision-preview` when images are detected
 4. **Adjust Settings** (optional):
    - **Max Image Size**: Default is 5MB (5000 KB). Reduce if you encounter memory issues
-   - **Supported Formats**: jpg, jpeg, png, gif, bmp, webp are supported by default
+   - **Supported Formats**: Configure which file types to support (default: jpg, jpeg, png, gif, bmp, webp, pdf)
 
 ## Usage
 
@@ -37,6 +37,7 @@ This guide explains how to use the multimodal (vision) capabilities in Auto Anki
 3. Use the Auto Anki commands as normal:
    - "Export Current File to Anki" - processes the entire file
    - "Export Highlighted Text to Anki" - processes selected text
+   - **"Export Current Media File to Anki"** - processes standalone media files (NEW!)
 
 ### Example Note Structure
 ```markdown
@@ -72,6 +73,36 @@ The loss decreases as the model learns from data.
 - "What type of neural network architecture is shown in the diagram?"
 - "According to the training chart, what happens to the loss over time?"
 - "Describe the components visible in the neural network diagram."
+
+## Standalone File Processing
+
+**NEW Feature!** You can now process individual media files directly, without embedding them in markdown notes.
+
+### Supported File Types
+- **Images**: JPG, JPEG, PNG, GIF, BMP, WebP
+- **Documents**: PDF
+- **Configurable**: Add/remove formats in plugin settings
+
+### How to Use Standalone Files
+1. **Open any supported file** in Obsidian (images, PDFs, etc.)
+2. **Use Command Palette** (`Cmd/Ctrl + Shift + P`)
+3. **Select** "Export Current Media File to Anki"
+4. **Configure questions** and generate flashcards
+
+The AI will analyze the file content directly and create relevant questions based on what it sees.
+
+### Benefits of Standalone Processing
+- ✅ **Direct Analysis**: Process files without creating markdown notes
+- ✅ **Better Focus**: AI concentrates solely on the file content
+- ✅ **Faster Workflow**: No need to embed files in notes first
+- ✅ **Flexible Learning**: Study any visual content in your vault
+
+### Example Use Cases
+- **Research Papers**: Process PDF figures and diagrams
+- **Screenshots**: Generate questions from captured content  
+- **Charts & Graphs**: Learn from data visualizations
+- **Slides**: Process presentation materials
+- **Infographics**: Study visual information designs
 
 ## Troubleshooting
 
