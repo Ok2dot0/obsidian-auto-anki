@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from 'obsidian';
+import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import { GptAdvancedOptions, AIProvider, MultimodalSettings } from './settings';
 
 import { 
@@ -7,7 +7,7 @@ import {
     exportToAnki,
     getAnkiDecks,
 } from './utils/anki';
-import { CardInformation, checkAI, convertNotesToFlashcards } from './utils/gpt';
+import { CardInformation, checkAI, convertNotesToFlashcards, convertStandaloneFileToFlashcards } from './utils/gpt';
 import { StatusBarElement } from './utils/cusom-types';
 
 // import { SAMPLE_CARD_INFORMATION } from 'sample/sample_card_information';
@@ -32,6 +32,7 @@ export class ExportModal extends Modal {
     ollamaBaseUrl?: string;
     ollamaModel?: string;
     multimodalSettings?: MultimodalSettings;
+    standaloneFile?: TFile; // For processing standalone media files
     
     constructor(
         app: App,
@@ -47,6 +48,7 @@ export class ExportModal extends Modal {
         ollamaBaseUrl?: string,
         ollamaModel?: string,
         multimodalSettings?: MultimodalSettings,
+        standaloneFile?: TFile,
     ) {
         super(app);
         this.statusBar = statusBar;
@@ -59,6 +61,7 @@ export class ExportModal extends Modal {
         this.ollamaBaseUrl = ollamaBaseUrl;
         this.ollamaModel = ollamaModel;
         this.multimodalSettings = multimodalSettings;
+        this.standaloneFile = standaloneFile;
 
         this.n_q = defaultNumQuestions ?? 5;
         this.n_q_valid = checkValidNumGreaterThanZero(this.n_q);
@@ -80,7 +83,10 @@ export class ExportModal extends Modal {
         if (this.statusBar.doReset && ankiCheck) this.statusBar.doReset();
         if (!ankiCheck) return this.close();
 
-        contentEl.createEl('h1', { text: 'How many questions should be generated?' });
+        const title = this.standaloneFile 
+            ? `Generate questions from: ${this.standaloneFile.name}` 
+            : 'How many questions should be generated?';
+        contentEl.createEl('h1', { text: title });
 
         new Setting(contentEl)
             .setName('Number of Questions')
@@ -120,18 +126,39 @@ export class ExportModal extends Modal {
 
                     if (!isRequestValid) return;
                     if (this.statusBar.doDisplayRunning) this.statusBar.doDisplayRunning();
-                    const card_sets: Array<CardInformation[]> = await convertNotesToFlashcards(
-                        this.app,
-                        this.aiProvider,
-                        this.apiKey,
-                        this.data,
-                        this.n_q,
-                        this.n_alt+1,
-                        this.gptAdvancedOptions,
-                        this.ollamaBaseUrl,
-                        this.ollamaModel,
-                        this.multimodalSettings,
-                    );
+                    
+                    let card_sets: Array<CardInformation[]>;
+                    
+                    // Check if we're processing a standalone file
+                    if (this.standaloneFile) {
+                        card_sets = await convertStandaloneFileToFlashcards(
+                            this.app,
+                            this.aiProvider,
+                            this.apiKey,
+                            this.standaloneFile,
+                            this.n_q,
+                            this.n_alt+1,
+                            this.gptAdvancedOptions,
+                            this.ollamaBaseUrl,
+                            this.ollamaModel,
+                            this.multimodalSettings,
+                        );
+                    } else {
+                        // Process text/markdown content as usual
+                        card_sets = await convertNotesToFlashcards(
+                            this.app,
+                            this.aiProvider,
+                            this.apiKey,
+                            this.data,
+                            this.n_q,
+                            this.n_alt+1,
+                            this.gptAdvancedOptions,
+                            this.ollamaBaseUrl,
+                            this.ollamaModel,
+                            this.multimodalSettings,
+                        );
+                    }
+                    
                     if (this.statusBar.doReset) this.statusBar.doReset();
 
                     if (card_sets.length === 0) return;
